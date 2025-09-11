@@ -1,13 +1,13 @@
-CREATE DATABASE pocketC;
+CREATE DATABASE IF NOT EXISTS pocketC;
 use pocketc;
 
-CREATE TABLE major_categories (
+CREATE TABLE IF NOT EXISTS major_categories (
     major_id   INT AUTO_INCREMENT PRIMARY KEY,
     major_name VARCHAR(50) NOT NULL,
     major_type ENUM('고정비','변동비') NOT NULL
 );
 
-CREATE TABLE sub_categories (
+CREATE TABLE IF NOT EXISTS sub_categories (
     sub_id   INT AUTO_INCREMENT PRIMARY KEY,
     major_id INT NOT NULL,
     sub_name VARCHAR(50) NOT NULL,
@@ -15,9 +15,8 @@ CREATE TABLE sub_categories (
     FOREIGN KEY (major_id) REFERENCES major_categories(major_id)
 );
 
-
-CREATE TABLE transactions (
-	`transaction_id`	INT	NOT NULL, -- 결제내역 아이디
+CREATE TABLE IF NOT EXISTS transactions (
+	`transaction_id` INT AUTO_INCREMENT PRIMARY KEY, -- 결제내역 아이디
 	`user_id`	INT	NULL,             -- 유저 아이디
 	`sub_id`	int	NOT NULL,         -- 소분류 카테고리 
 	`major_id`	int	NOT NULL,         -- 대분류 카테고리
@@ -29,12 +28,6 @@ CREATE TABLE transactions (
 	`updated_at`	TIMESTAMP	NULL       -- 수정일
 );
 
-ALTER TABLE `transactions` ADD CONSTRAINT `PK_TRANSACTIONS` PRIMARY KEY (
-	`transaction_id`,
-	`user_id`,
-	`sub_id`,
-	`major_id`
-);
 -- (권장) 인덱스: 트랜잭션 조회/집계 성능용
 CREATE INDEX idx_tx_user_time   ON transactions (user_id, transacted_at);
 CREATE INDEX idx_tx_user_subcat ON transactions (user_id, sub_id);
