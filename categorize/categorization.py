@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import zlib
-
 from sqlalchemy import text
 
 from category_lib import *
 from database import *
-from utils import *
 from model.main import *
+from utils import *
 
 
 def classify_row(merchant: str, amount: int, kst_dt: datetime) -> CategoryHit:
@@ -35,7 +33,7 @@ def classify_row(merchant: str, amount: int, kst_dt: datetime) -> CategoryHit:
     init_ml_once()
     preds: List[Tuple[str, str]] = []
 
-    if TFIDF_VEC is not None and TFIDF_CLF is not None and HAVE_SK:
+    if TFIDF_VEC is not None and TFIDF_CLF is not None:
         try:
             X = TFIDF_VEC.transform([nm])
             if hasattr(TFIDF_CLF, 'predict_proba'):
@@ -59,7 +57,7 @@ def classify_row(merchant: str, amount: int, kst_dt: datetime) -> CategoryHit:
                 preds.append(("기타" "ml:tfidf"))
         except Exception:
             pass
-    if KOBERT_TOK is not None and KOBERT_MODEL is not None and KOBERT_CLF is not None and HAVE_KOBERT and HAVE_SK:
+    if KOBERT_TOK is not None and KOBERT_MODEL is not None and KOBERT_CLF is not None:
         try:
             emb = kobert_embed([nm])
             p = KOBERT_CLF.predict_proba(emb)[0]

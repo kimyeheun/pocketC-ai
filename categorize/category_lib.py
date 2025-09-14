@@ -30,7 +30,7 @@ REGEX_RULES: List[Tuple[re.Pattern, str]] = [
     # 통신/인터넷 (Communication/Internet)
     (re.compile(r"SKT|KT|LGU\+|통신"), "휴대폰 요금"),
     # OTT (Streaming Services)
-    (re.compile(r"넷플릭스|GPT|디즈니|티빙|왓챠|유튜브|웨이브|구글플레이"), "OTT/구독서비스"),
+    (re.compile(r"넷플릭스|GPT|디즈니|티빙|왓챠|유튜브|웨이브|구글플레이|OPEN|CLAUDE"), "OTT/구독서비스"),
     # 쇼핑 (Shopping)
     (re.compile(r"쿠팡|G마켓|11번가|SSG"), "온라인 쇼핑몰"),
     (re.compile(r"무신사|백화점|지그재그|ZIGZAG|알리|더현대서울|타임스퀘어"), "의류/패션"),
