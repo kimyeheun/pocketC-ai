@@ -54,7 +54,6 @@ def parse_datetime_kst(x) -> datetime:
 
 
 # NOTE: 적요 정규화
-# BUGFIX: 뒤에 남아있던 '|' 제거 (의도치 않은 빈 패턴 매칭 방지) :contentReference[oaicite:3]{index=3}
 BRACKET_RE = re.compile(r"[\[\(\{].*?[\]\)\}]")
 NON_ALNUM_KO_EN = re.compile(r"[^0-9A-Za-z가-힣\s]", re.UNICODE)
 BRANCH_SUFFIX_RE = re.compile(r"(역|점|센터|점포|지점|영업점|사옥|타워)\s*\w*$")

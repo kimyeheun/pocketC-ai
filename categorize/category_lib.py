@@ -5,19 +5,25 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, List
 
 # NOTE: 분류 결과 표현
-@dataclass
+@dataclass(frozen=True)
 class CategoryHit:
-    sub_name: str  # 세부 항목
-    source: str    # 규칙/휴리스틱/ML 등 출처
+    sub_name: str
+    source: str
 
-# 정규식 기반 1차 룰 (중복·우선순위 간단 정리) :contentReference[oaicite:4]{index=4}
+@dataclass(frozen=True)
+class SubCategory:
+    sub_id: int
+    major_id: int
+    sub_name: str
+
+# NOTE: 정규식 기반 1차 룰
 REGEX_RULES: List[Tuple[re.Pattern, str]] = [
     # 식비 (Food & Drink)
     (re.compile(r"스타벅스|이디야|투썸|메가|빽"), "커피"),
     (re.compile(r"(맥도날드|버거킹|롯데리아|KFC|BKR|치킨|치퀸|김밥|돈까스|족발|냉면|순대국|칼국수|비빔밥|식당|한식|중식|일식|양식|분식|푸드|오리바베|쌈|LABAB|왕돈까스|밀향기)"), "외식"),
     (re.compile(r"(요기요|배달의민족|쿠팡이츠)"), "배달음식"),
     (re.compile(r"(마켓컬리|홈플러스|이마트|롯데마트|식자재|축산|슈퍼|마트|식재료|프레시)"), "식재료"),
-    (re.compile(r"(GS25|씨유|CU|세븐일레븐|이마트24|지에스|홈마트|편의점)"), "편의점"),
+    (re.compile(r"(GS25|씨유|CU|세븐일레븐|이마트24|지에스|홈마트|편의점)"), "간식"),
 
     # 교통/차량
     (re.compile(r"(티머니|T-money|지하철|도시철도|코레일|교통|버스)"), "대중교통"),
