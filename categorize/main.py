@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import os
 import sys
 import time
+from typing import List
 
-from categorization import *
+import pandas as pd
+
+from categorization import process_file
+from database import make_engine_from_env, load_sub_map
 
 
 def main():
@@ -19,8 +24,7 @@ def main():
 
     # Collect files
     excel_paths = [
-        os.path.join(folder, f) for f in os.listdir(folder)
-        if f.endswith("_거래내역.xlsx")
+        os.path.join(folder, f) for f in os.listdir(folder) if f.endswith("_거래내역.xlsx")
     ]
     excel_paths.sort()
 
@@ -31,12 +35,12 @@ def main():
             process_file(p, engine, sub_map, unknown_log)
         except Exception as e:
             print(f"[ERROR] {p}: {e}")
-            unknown_log.append({'file': p, 'reason': 'exception', 'detail': str(e)})
+            unknown_log.append({"file": p, "reason": "exception", "detail": str(e)})
 
     # Save curation queue
     if unknown_log:
         out = os.path.join(folder, f"_curation_queue_{int(time.time())}.csv")
-        pd.DataFrame(unknown_log).to_csv(out, index=False, encoding='utf-8-sig')
+        pd.DataFrame(unknown_log).to_csv(out, index=False, encoding="utf-8-sig")
         print(f"[INFO] Curation queue written: {out}")
     else:
         print("[INFO] 다 잘 카테고라이징 되었습니다~.")

@@ -15,6 +15,7 @@ class SubRow:
     major_id: int
     sub_name: str
 
+
 def make_engine_from_env() -> Engine:
     host = os.getenv("DB_HOST", "127.0.0.1")
     port = int(os.getenv("DB_PORT", "3306"))
@@ -23,6 +24,7 @@ def make_engine_from_env() -> Engine:
     name = os.getenv("DB_NAME", "pocketc")
     url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
     return create_engine(url, pool_pre_ping=True, future=True)
+
 
 def load_sub_map(engine: Engine) -> Dict[str, SubRow]:
     sql = "SELECT sub_id, major_id, sub_name FROM sub_categories"

@@ -28,6 +28,7 @@ def parse_datetime_kst(x) -> datetime:
         dt = x
     else:
         s = str(x).strip()
+        dt = None
         for fmt in [
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d %H:%M",
@@ -44,15 +45,17 @@ def parse_datetime_kst(x) -> datetime:
                 dt = datetime.strptime(s, fmt)
                 break
             except Exception:
-                dt = None
+                continue
         if dt is None:
             raise ValueError(f"Unrecognized datetime format: {x}")
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=KST)
     return dt
 
+
 # NOTE: 적요 정규화
-BRACKET_RE = re.compile(r"[\[\(\{].*?[\]\)\}]|")
+# BUGFIX: 뒤에 남아있던 '|' 제거 (의도치 않은 빈 패턴 매칭 방지) :contentReference[oaicite:3]{index=3}
+BRACKET_RE = re.compile(r"[\[\(\{].*?[\]\)\}]")
 NON_ALNUM_KO_EN = re.compile(r"[^0-9A-Za-z가-힣\s]", re.UNICODE)
 BRANCH_SUFFIX_RE = re.compile(r"(역|점|센터|점포|지점|영업점|사옥|타워)\s*\w*$")
 
@@ -65,6 +68,5 @@ def normalize_merchant(raw: str) -> str:
     s = BRACKET_RE.sub(" ", s)
     s = NON_ALNUM_KO_EN.sub(" ", s)
     s = BRANCH_SUFFIX_RE.sub("", s)
-    s = s.replace(" ","")
+    s = s.replace(" ", "")
     return s
-

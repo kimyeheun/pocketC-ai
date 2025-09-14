@@ -1,4 +1,3 @@
-# visualization.py
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np

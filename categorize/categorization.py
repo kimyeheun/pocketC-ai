@@ -1,84 +1,171 @@
 from __future__ import annotations
 
-from sqlalchemy import text
+import os
+import re
+from datetime import datetime
+from typing import Dict, List, Tuple
 
-from category_lib import *
-from database import *
-from model.main import *
-from utils import *
+import numpy as np
+import pandas as pd
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
+from category_lib import CategoryHit, REGEX_RULES, CAFE_HINT, CONVENIENCE_HINT
+from database import SubRow
+from utils import parse_amount, parse_datetime_kst, normalize_merchant, KST
+
+# (선택) 외부 모델 의존성: 존재하면 사용, 없으면 안전히 건너뛴다.
+# 원본 코드에서는 model.main 에 TFIDF_VEC/CLF, KOBERT_* 및 init_ml_once 가 있다고 가정함. :contentReference[oaicite:6]{index=6}
+try:
+    from model.main import init_ml_once, TFIDF_VEC, TFIDF_CLF, KOBERT_TOK, KOBERT_MODEL, KOBERT_CLF, kobert_embed, ML_CONFIRM
+except Exception:
+    def init_ml_once():
+        return
+    TFIDF_VEC = TFIDF_CLF = None
+    KOBERT_TOK = KOBERT_MODEL = KOBERT_CLF = None
+    def kobert_embed(x):  # pragma: no cover
+        return None
+    ML_CONFIRM = 0.75
+
+
+# --------------------------
+# Rule 체인 (모듈화의 핵심)
+# --------------------------
+class Rule:
+    def apply(self, merchant: str, amount: int, kst_hour: int) -> CategoryHit | None:
+        raise NotImplementedError
+
+
+class RegexRule(Rule):
+    def __init__(self, patterns: List[Tuple[re.Pattern, str]]):
+        self.patterns = patterns
+
+    def apply(self, merchant: str, amount: int, kst_hour: int) -> CategoryHit | None:
+        for pat, sub_name in self.patterns:
+            if pat.search(merchant):
+                return CategoryHit(sub_name, "regex")
+        return None
+
+
+class CafeRule(Rule):
+    def apply(self, merchant: str, amount: int, kst_hour: int) -> CategoryHit | None:
+        if CAFE_HINT.search(merchant):
+            return CategoryHit("커피", "heuristic:cafe")
+        return None
+
+
+class ConvenienceRule(Rule):
+    def apply(self, merchant: str, amount: int, kst_hour: int) -> CategoryHit | None:
+        if CONVENIENCE_HINT.search(merchant):
+            return CategoryHit("간식", "heuristic:conv_store")
+        return None
+
+
+class DiningTimeRule(Rule):
+    def apply(self, merchant: str, amount: int, kst_hour: int) -> CategoryHit | None:
+        if (11 <= kst_hour <= 14 or 18 <= kst_hour <= 21) and amount > 10_000:
+            return CategoryHit("외식", "heuristic:dining")
+        return None
+
+
+class MLRule(Rule):
+    """
+    ML 보조 판단: 확신(confidence)이 높으면 라벨을 제안.
+    주의: 라벨 인덱스 ↔ sub_name 매핑 아티팩트가 없다면, 보수적으로 '기타'로 둔다. (운영 임계치 ML_CONFIRM 사용)
+    BUGFIX: 원본의 ('기타' 'ml:tfidf') 콤마 누락과 conf 미반영 문제 수정. :contentReference[oaicite:7]{index=7}
+    """
+    def __init__(self, label_inverse_map: List[str] | None = None):
+        # label_inverse_map 이 있으면 해당 값을 sub_name 으로 사용
+        self.label_inverse_map = label_inverse_map
+
+    def apply(self, merchant: str, amount: int, kst_hour: int) -> CategoryHit | None:
+        init_ml_once()
+        candidates: List[Tuple[str, str, float]] = []  # (sub_name, source, score)
+
+        # TF-IDF 계열
+        if TFIDF_VEC is not None and TFIDF_CLF is not None:
+            try:
+                X = TFIDF_VEC.transform([merchant])
+                if hasattr(TFIDF_CLF, "predict_proba"):
+                    p = TFIDF_CLF.predict_proba(X)[0]
+                else:
+                    d = TFIDF_CLF.decision_function(X)[0]
+                    d = d - d.max()
+                    p = np.exp(d) / np.exp(d).sum()
+                idx = int(np.argmax(p))
+                conf = float(p[idx])
+                if conf >= ML_CONFIRM:
+                    sub_name = (
+                        self.label_inverse_map[idx]
+                        if self.label_inverse_map is not None and 0 <= idx < len(self.label_inverse_map)
+                        else "기타"
+                    )
+                    candidates.append((sub_name, "ml:tfidf", conf))
+            except Exception:
+                pass
+
+        # KoBERT 계열
+        if KOBERT_TOK is not None and KOBERT_MODEL is not None and KOBERT_CLF is not None:
+            try:
+                emb = kobert_embed([merchant])
+                p = KOBERT_CLF.predict_proba(emb)[0]
+                idx = int(np.argmax(p))
+                conf = float(p[idx])
+                if conf >= ML_CONFIRM:
+                    sub_name = (
+                        self.label_inverse_map[idx]
+                        if self.label_inverse_map is not None and 0 <= idx < len(self.label_inverse_map)
+                        else "기타"
+                    )
+                    candidates.append((sub_name, "ml:kobert", conf))
+            except Exception:
+                pass
+
+        if candidates:
+            # score 최대인 후보 선택
+            sub_name, source, _score = max(candidates, key=lambda x: x[2])
+            return CategoryHit(sub_name, source)
+
+        return None
+
+
+class Categorizer:
+    def __init__(self, rules: List[Rule], fallback: str = "기타"):
+        self.rules = rules
+        self.fallback = fallback
+
+    def classify(self, merchant: str, amount: int, kst_dt: datetime) -> CategoryHit:
+        hour = kst_dt.hour
+        for r in self.rules:
+            hit = r.apply(merchant, amount, hour)
+            if hit:
+                return hit
+        return CategoryHit(self.fallback, "fallback")
+
+
+# 기본 체인 구성
+DEFAULT_CHAIN = Categorizer(
+    rules=[
+        RegexRule(REGEX_RULES),
+        CafeRule(),
+        ConvenienceRule(),
+        DiningTimeRule(),
+        MLRule(label_inverse_map=None),  # 아티팩트 없으면 None
+    ],
+    fallback="기타",
+)
 
 
 def classify_row(merchant: str, amount: int, kst_dt: datetime) -> CategoryHit:
-    nm = merchant
-
-    # NOTE: 1)
-    for pat, sub_name in REGEX_RULES:
-        if pat.search(nm):
-            return CategoryHit(sub_name, "regex")
-
-    hour = kst_dt.hour
-    # NOTE: 2) 식비 세부 결정
-    if CAFE_HINT.search(nm):
-        return CategoryHit("커피", "heuristic:cafe")
-        # return CategoryHit("음료(반복 구매)", "heuristic:drink")
-    if CONVENIENCE_HINT.search(nm):
-        return CategoryHit("간식", "heuristic:conv_store")
-    if 11 <= hour <= 14 or 18 <= hour <= 21:
-        if amount > 10000:
-            return CategoryHit("외식", "heuristic:dining")
-
-    # NOTE: 3) ??
-
-    # NOTE: 4) ML 보조 판단
-    init_ml_once()
-    preds: List[Tuple[str, str]] = []
-
-    if TFIDF_VEC is not None and TFIDF_CLF is not None:
-        try:
-            X = TFIDF_VEC.transform([nm])
-            if hasattr(TFIDF_CLF, 'predict_proba'):
-                p = TFIDF_CLF.predict_proba(X)[0]
-                import numpy as np
-                idx = int(np.argmax(p))
-                conf = float(p[idx])
-            else:
-                # decision_function → softmax로 근사
-                import numpy as np
-                d = TFIDF_CLF.decision_function(X)[0]
-                d = d - d.max()
-                p = np.exp(d) / np.exp(d).sum()
-                idx = int(np.argmax(p))
-                conf = float(p[idx])
-            # id→sub_name 매핑은 벡터화/학습 시 순서를 알 수 없으므로, 간단히 가장 가까운 sub_name을 추정
-            # 여기서는 확률 top이 기존 규칙과 충돌하지 않는다고 가정하고, conf만 기준으로 사용
-            # (정교한 label 매핑은 별도 train 스크립트에서 저장 권장)
-            # 임시로 '기타' 반환 방지: conf만 체크하고 서브카테고리는 미지정 → 기타
-            if conf >= ML_CONFIRM:
-                preds.append(("기타" "ml:tfidf"))
-        except Exception:
-            pass
-    if KOBERT_TOK is not None and KOBERT_MODEL is not None and KOBERT_CLF is not None:
-        try:
-            emb = kobert_embed([nm])
-            p = KOBERT_CLF.predict_proba(emb)[0]
-            import numpy as np
-            idx = int(np.argmax(p))
-            conf = float(p[idx])
-            if conf >= ML_CONFIRM:
-                preds.append(("기타", "ml:kobert"))
-        except Exception:
-            pass
-    if preds:
-        # 현재 버전은 ML로 서브카테고리 명까지 안정적으로 매핑하려면 학습 시 라벨 인덱스 ↔ sub_name 테이블이 필요함.
-        # 해당 테이블을 아직 생성하지 않았으므로, ML은 신뢰도 판단용으로만 사용하고 최종 라벨은 보수적으로 기타 유지.
-        best = sorted(preds, key=lambda x: x[1], reverse=True)[0]
-        return CategoryHit(best[0], best[1])
-
-    # NOTE: 5) 그래도 남은 것들 == 기타
-    return CategoryHit("기타", "fallback")
+    """
+    호환용 함수 (기존 시그니처 유지). 내부는 Rule 체인으로 모듈화. :contentReference[oaicite:8]{index=8}
+    """
+    return DEFAULT_CHAIN.classify(merchant, amount, kst_dt)
 
 
-# NOTE: 주 카테고라이징 로직
+# --------------------------
+# 파일 처리 및 DB 반영
+# --------------------------
 INSERT_SQL = text(
     """
     INSERT INTO transactions (
@@ -106,7 +193,7 @@ def process_file(path: str, engine: Engine, sub_map: Dict[str, SubRow], unknown_
 
     df = pd.read_excel(path, dtype=str)
     cols = {c.strip(): c for c in df.columns}
-    need = ['거래일시', '적요', '출금액']
+    need = ["거래일시", "적요", "출금액"]
     for n in need:
         if n not in cols:
             raise KeyError(f"Column '{n}' not found in {path}. Found: {list(df.columns)}")
@@ -115,22 +202,25 @@ def process_file(path: str, engine: Engine, sub_map: Dict[str, SubRow], unknown_
 
     rows = []
     for _, row in df.iterrows():
-        raw_dt = row[cols['거래일시']]
-        raw_nm = row[cols['적요']]
-        raw_amt = row[cols['출금액']]
+        raw_dt = row[cols["거래일시"]]
+        raw_nm = row[cols["적요"]]
+        raw_amt = row[cols["출금액"]]
 
         try:
             kst_dt = parse_datetime_kst(raw_dt)
         except Exception:
-            unknown_log.append({
-                'user_id': user_id,
-                'reason': 'bad_datetime',
-                '거래일시': str(raw_dt),
-                '적요': str(raw_nm),
-                '출금액': str(raw_amt),
-                'file': path,
-            })
+            unknown_log.append(
+                {
+                    "user_id": user_id,
+                    "reason": "bad_datetime",
+                    "거래일시": str(raw_dt),
+                    "적요": str(raw_nm),
+                    "출금액": str(raw_amt),
+                    "file": path,
+                }
+            )
             continue
+
         merchant = normalize_merchant(raw_nm)
         amount = parse_amount(raw_amt)
 
@@ -139,30 +229,34 @@ def process_file(path: str, engine: Engine, sub_map: Dict[str, SubRow], unknown_
 
         # map sub_name -> (sub_id, major_id); fallback to 기타
         if sub_name not in sub_map:
-            unknown_log.append({
-                'user_id': user_id,
-                'reason': 'unknown_sub_name',
-                'sub_name': sub_name,
-                'merchant': merchant,
-                'amount': amount,
-                'file': path,
-            })
+            unknown_log.append(
+                {
+                    "user_id": user_id,
+                    "reason": "unknown_sub_name",
+                    "sub_name": sub_name,
+                    "merchant": merchant,
+                    "amount": amount,
+                    "file": path,
+                }
+            )
             sub_name = "기타" if "기타" in sub_map else list(sub_map.keys())[0]
 
         sub = sub_map[sub_name]
-        status = '미반영'
+        status = "미반영"
 
-        rows.append({
-            'user_id': user_id,
-            'sub_id': sub.sub_id,
-            'major_id': sub.major_id,
-            'transacted_at': kst_dt.astimezone(KST).replace(tzinfo=None),  # naive KST
-            'amount': amount,
-            'merchanr_name': merchant,
-            'staus': status,
-            'created_at': now_kst.replace(tzinfo=None),
-            'updated_at': now_kst.replace(tzinfo=None),
-        })
+        rows.append(
+            {
+                "user_id": user_id,
+                "sub_id": sub.sub_id,
+                "major_id": sub.major_id,
+                "transacted_at": kst_dt.astimezone(KST).replace(tzinfo=None),  # naive KST
+                "amount": amount,
+                "merchanr_name": merchant,
+                "staus": status,
+                "created_at": now_kst.replace(tzinfo=None),
+                "updated_at": now_kst.replace(tzinfo=None),
+            }
+        )
 
     if not rows:
         return

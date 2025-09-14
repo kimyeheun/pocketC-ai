@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS mission_instances (
   valid_from DATE NOT NULL,
   valid_to DATE  NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_mi_user_status (user_id, status),
+  INDEX idx_mi_user_status (user_id, mission_status),
   INDEX idx_mi_user_valid (user_id, valid_from, valid_to)
 );
 
