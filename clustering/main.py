@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from database import make_engine_from_env, TransactionRepository
 # from utils import build_user_features
 from features import build_user_features
+from scoring import cluster_category_profile, score_categories
 from visualization import check_n_with_elbow, visualization
 from visualization import cluster_scatter
 
@@ -76,6 +77,50 @@ def main():
         savepath=plot_path
     )
     print(f"[INFO] scatter saved → {plot_path}")
+
+    # 3-a) user_id ↔ cluster 매핑 만들기/저장
+    assign = pd.DataFrame({"user_id": user_feat.index, "cluster": labels})
+    os.makedirs("outputs", exist_ok=True)
+    assign_path = os.path.join("outputs", "cluster_assignments.csv")
+    assign.to_csv(assign_path, index=False, encoding="utf-8-sig")
+    print(f"[INFO] cluster assignments saved → {assign_path}")
+
+    # 3-b) (중요) '절약 카테고리' 산출 파이프라인
+    # 프로파일 생성
+    prof = cluster_category_profile(tx, assign)
+
+    # 스코어링 (임계는 데이터 규모에 맞춰 조정 가능)
+    scored = score_categories(
+        prof,
+        w_share=0.5,  # 군집 내 비중
+        w_trend=0.3,  # 최근 14일 증가율
+        w_ticket=0.2,  # 건당 금액
+        min_cnt=3,  # 해당 군집에서 최소 3건 이상일 때만 고려
+        min_share=0.015
+    )
+
+    # 군집별 Top-3
+    top3_by_cluster = scored.groupby("cluster").head(3)
+    top3_by_cluster_path = os.path.join("outputs", "top3_by_cluster.csv")
+    top3_by_cluster.to_csv(top3_by_cluster_path, index=False, encoding="utf-8-sig")
+    print(f"[INFO] per-cluster Top-3 saved → {top3_by_cluster_path}")
+
+    # 전체 Top-3 (군집 크기 가중치 반영)
+    sizes = assign["cluster"].value_counts(normalize=True)
+    scored["cluster_weight"] = scored["cluster"].map(sizes)
+    scored["global_score"] = scored["score"] * scored["cluster_weight"]
+    top3_global = scored.sort_values("global_score", ascending=False) \
+        .drop_duplicates("sub_id").head(3)
+    top3_global_path = os.path.join("outputs", "top3_global.csv")
+    top3_global.to_csv(top3_global_path, index=False, encoding="utf-8-sig")
+    print(f"[INFO] global Top-3 saved → {top3_global_path}")
+
+    # (선택) 화면에도 요약 출력
+    print("\n[Per-cluster Top-3]")
+    print(top3_by_cluster[["cluster", "sub_id", "share_30d", "trend14_pct", "avg_ticket", "cnt", "score"]])
+
+    print("\n[Global Top-3]")
+    print(top3_global[["sub_id", "share_30d", "trend14_pct", "avg_ticket", "cnt", "global_score"]])
 
 if __name__ == "__main__":
     main()
