@@ -35,5 +35,8 @@ def main():
     else:
         print("[INFO] 다 잘 카테고라이징 되었습니다~.")
 
+    # NOTE: user 별 카테고리 사용량 시각화
+
+
 if __name__ == "__main__":
     main()

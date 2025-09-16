@@ -18,7 +18,7 @@ class CategorizationService:
                 CafeRule(),
                 ConvenienceRule(),
                 DiningTimeRule(),
-                MLRule(),  # get_label_names 자동 로딩
+                MLRule(),
             ],
             fallback=fallback,
         )

@@ -25,6 +25,7 @@ class IngestionService:
 
     def _process_file(self, path: str, unknown_log: List[dict]):
         m = USER_FILE_RE.search(os.path.basename(path))
+        print(m)
         if not m:
             print(f"[SKIP] file name not matching pattern: {path}")
             return
