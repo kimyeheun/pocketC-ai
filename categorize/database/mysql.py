@@ -1,11 +1,15 @@
 from __future__ import annotations
+
 from typing import Dict, List
+
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+
 from categorize.category_lib import SubCategory
-from categorize.domain.transaction import Transaction
 from categorize.database.repository import SubCategoryRepository, TransactionRepository
+from categorize.domain.transaction import Transaction
+
 
 class MySQLSubCategoryRepository(SubCategoryRepository):
     def __init__(self, engine: Engine):

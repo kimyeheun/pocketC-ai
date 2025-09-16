@@ -7,7 +7,8 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-from database import make_engine_from_env, TransactionRepository
+from common.engine import make_engine_from_env
+from database import TransactionRepository
 # from utils import build_user_features
 from features import build_user_features
 from scoring import cluster_category_profile, score_categories

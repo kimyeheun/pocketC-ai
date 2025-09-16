@@ -5,7 +5,7 @@ import pandas as pd
 import sys
 import time
 
-from categorize.database.engine import make_engine_from_env
+from common.engine import make_engine_from_env
 from categorize.database.mysql import MySQLSubCategoryRepository, MySQLTransactionRepository
 from categorize.service.transaction_ingestion import IngestionService
 

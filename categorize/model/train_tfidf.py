@@ -14,7 +14,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 
-from categorize.database.engine import make_engine_from_env
+from common.engine import make_engine_from_env
 from categorize.utils import normalize_merchant
 
 DEFAULT_OUTPUT = Path(os.getenv("MODEL_DIR", "./artifacts")).resolve()

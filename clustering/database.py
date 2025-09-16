@@ -1,29 +1,13 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
-from urllib.parse import quote_plus
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-
-def make_engine_from_env() -> Engine:
-    host = os.getenv("DB_HOST", "127.0.0.1")
-    port = int(os.getenv("DB_PORT", "3306"))
-    user = os.getenv("DB_USER", "root")
-    # 특수문자 안전
-    password = quote_plus(os.getenv("DB_PASSWORD", "yen1212"))
-    name = os.getenv("DB_NAME", "pocketc")
-    url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
-    engine = create_engine(url, pool_pre_ping=True, future=True)
-    # 연결 즉시 검증
-    with engine.connect() as conn:
-        conn.exec_driver_sql("SELECT 1")
-    return engine
 
 @dataclass
 class TransactionRepository:
