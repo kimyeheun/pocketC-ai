@@ -48,7 +48,7 @@ def score_categories(profile: pd.DataFrame,
     """
     df = profile.copy()
 
-    # 군집별 z-score 정규화 (NaN→0)
+    # 군집별 z-score 정규화
     def _z(g, col):
         s = g[col]
         return (s - s.mean()) / (s.std() + 1e-9)

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+from pathlib import Path
 
+import joblib
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -122,6 +125,19 @@ def main():
 
     print("\n[Global Top-3]")
     print(top3_global[["sub_id", "share_30d", "trend14_pct", "avg_ticket", "cnt", "global_score"]])
+
+
+    # NOTE: 클러스터 저장
+    feature_cols = list(user_feat.columns)
+    cluster_path = Path("cluster")
+    cluster_path.mkdir(exist_ok=True)
+
+    with open(cluster_path/"feature_cols.json","w",encoding="utf-8") as f:
+        json.dump(feature_cols, f, ensure_ascii=False, indent=2)
+
+    # 2) 스케일러/모델 저장
+    joblib.dump(scaler, cluster_path / "scaler.joblib")  # ← 현재 StandardScaler 사용 중 :contentReference[oaicite:4]{index=4}
+    joblib.dump(km, cluster_path / "kmeans.joblib")
 
 if __name__ == "__main__":
     main()

@@ -39,7 +39,6 @@ def _interpurchase_hours(grp: pd.DataFrame) -> float:
     diff_h = (dt.diff().dropna().dt.total_seconds() / 3600.0).values
     return float(np.mean(diff_h))
 
-# ------- main builder -------
 
 def build_user_features(
     tx: pd.DataFrame,
@@ -64,9 +63,6 @@ def build_user_features(
     tx = _to_dt(tx)
     tx = _time_flags(tx)
 
-    # -----------------------------
-    # 1) 기본 집계(사용자 전체)
-    # -----------------------------
     base = tx.groupby("user_id").agg(
         total_spend_30d=("amount","sum"),
         total_cnt_30d=("amount","size"),
